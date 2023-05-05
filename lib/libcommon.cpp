@@ -39,7 +39,7 @@ int recv_message_or_timeout(char *buff, size_t len, int *conn_id)
         if (data_fds[i].revents & POLLIN) {
 
             struct sockaddr_in servaddr;
-            socklen_t slen;
+            socklen_t slen = sizeof(struct sockaddr_in);
 
             int n = recvfrom(data_fds[i].fd, buff, len, MSG_WAITALL, (struct sockaddr *) &servaddr , &slen);
             int j = -1; 
