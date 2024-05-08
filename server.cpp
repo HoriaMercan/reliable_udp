@@ -56,12 +56,19 @@ int main(int argc, char *argv[])
 		do {
 			i += recv_data(conn_id, (char *)&file_size + i, sizeof(uint32_t) - i);
 		} while (i < (int)sizeof(uint32_t));
-
+		// file_size = 7872;
+		printf("file size = %d\n",file_size);
+		int cnt = 0;
     	TICK(TIME_A);
 	    do {
+			if (cnt == -1)
+				printf("file size = %d\n",file_size);
+
+			cnt++;
 			len = recv_data(conn_id, buf, CHUNKSIZE);
 
 			file_size -= len;
+			
 
 			write(fd, buf, len);
 			/* Files have an # at the end */
