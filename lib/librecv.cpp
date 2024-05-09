@@ -34,6 +34,9 @@ bool *acked_data[MAX_CONNECTIONS];
 
 int udp_socket;
 
+
+map<int, char *>ordered_segments;
+
 int recv_data(int conn_id, char *buffer, int len)
 {
     int size = 0;
@@ -49,13 +52,15 @@ int recv_data(int conn_id, char *buffer, int len)
         pthread_mutex_unlock(&cons[conn_id]->con_lock);
         return 0;
     }
+
     memcpy(buffer, received_data_buffer[conn_id] + start_size[conn_id], size);
     // buffer_size[conn_id] -= size;
     start_size[conn_id] += size;
 
-    // if (buffer_size[conn_id] != 0) {
-    //     memmove(received_data_buffer[conn_id], received_data_buffer[conn_id] + size, buffer_size[conn_id]);
-    // }
+    
+    if (buffer_size[conn_id] >= max_buffer_size - 2 * MAX_SEGMENT_SIZE) {
+        memmove(received_data_buffer[conn_id], received_data_buffer[conn_id] + start_size[conn_id], buffer_size[conn_id]);
+    }
 
     pthread_mutex_unlock(&cons[conn_id]->con_lock);
     
@@ -87,8 +92,6 @@ int send_ack_again(connection *conn, int current_ack) {
     return rc;
 }
 
-map<int, char *>ordered_segments;
-
 void *receiver_handler(void *arg)
 {
 
@@ -116,7 +119,7 @@ void *receiver_handler(void *arg)
             }
 
             if (data_hdr.seq_num < acked_by_now[conn_id]) {
-                send_ack_again(conn, data_hdr.seq_num);
+                send_ack_again(conn, acked_by_now[conn_id] - 1);
                 pthread_mutex_unlock(&cons[conn_id]->con_lock);
                 continue;
             }
@@ -174,6 +177,8 @@ void *receiver_handler(void *arg)
 
         } else {
             DEBUG_PRINT("TIMEOUT\n");
+
+            send_ack_again(conn, acked_by_now[conn_id] - 1);
         }
         /* Handle segment received from the sender. We use this between locks
         as to not have synchronization issues with the recv_data calls which are
@@ -232,7 +237,7 @@ int wait4connect(uint32_t ip, uint16_t port)
 
     printf("Received request\n");
     window_size = ctrl_hdr.recv_window; // window size
-    con->max_window_seq = window_size;
+    con->max_window_seq = window_size + 1;
 
     acked_data[con->conn_id] = new bool[con->max_window_seq];
     acked_by_now[con->conn_id] = 1;
@@ -254,7 +259,7 @@ int wait4connect(uint32_t ip, uint16_t port)
 
     // client_addr.sin_port = port;
 
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 3; i++) {
         rc = sendto(con->sockfd, &ctrl_hdr, sizeof(ctrl_hdr), 0,
                         (sockaddr *)&client_addr, client_addr_len);
 
@@ -325,7 +330,7 @@ void init_receiver(int recv_buffer_bytes)
     // all_addr.sin_family = AF_INET;
 
     for (int i = 0; i < MAX_CONNECTIONS; i++)
-        received_data_buffer[i] = (uint8_t *)calloc(10 * recv_buffer_bytes, sizeof(uint8_t));
+        received_data_buffer[i] = (uint8_t *)calloc(recv_buffer_bytes, sizeof(uint8_t));
     max_buffer_size = recv_buffer_bytes;
 
     // udp_socket = socket(AF_INET, SOCK_DGRAM, 0);

@@ -93,16 +93,12 @@ int send_segment(int conn_id, char *buffer, int len) {
     data_hdr.type = 3; // type -> data
     data_hdr.seq_num = current_seq_no++;
     int addr_len = sizeof(client_addr);
-    // DEBUG_PRINT("IN SEND SEGMENT2\n");
+
     char *buff = (char *)calloc(MAX_SEGMENT_SIZE, sizeof(char));
-    // memset(buff, 0, MAX_SEGMENT_SIZE);
+
     *(poli_tcp_data_hdr *)buff = data_hdr;
     memcpy(buff + sizeof(poli_tcp_data_hdr), buffer, max_sent);
-    // DEBUG_PRINT("IN SEND SEGMENT3\n");
-    // while (on_air >= window_size);
-    // bool sent_now = false;
-    // pthread_mutex_lock(&cons[conn_id]->con_lock);
-    // DEBUG_PRINT("IN SEND SEGMENT4\n");
+
     to_be_sent[conn_id].push_back(buff);
     
     if (on_air < window_size) {
@@ -110,7 +106,6 @@ int send_segment(int conn_id, char *buffer, int len) {
         send_queue_first(conn);
         
     } 
-    
     // pthread_mutex_unlock(&cons[conn_id]->con_lock);
 
     return max_sent;
@@ -133,7 +128,7 @@ int send_data(int conn_id, char *buffer, int len)
             size += aux_size;
         } else break;
         DEBUG_PRINT("sent %d bytes\n", aux_size);
-    } while (on_air < window_size);
+    } while (on_air < 2 * window_size);
 
     pthread_mutex_unlock(&cons[conn_id]->con_lock);
 
@@ -183,7 +178,7 @@ void *sender_handler(void *arg)
         } while(res == -14);
 
 
-        DEBUG_PRINT("res = %d\n", res);
+        // DEBUG_PRINT("res = %d\n", res);
 
         /* Handle segment received from the receiver. We use this between locks
         as to not have synchronization issues with the send_data calls which are
@@ -195,7 +190,6 @@ void *sender_handler(void *arg)
         /**
          * Am primit timeout, asa ca ar trebui sa trimit din nou pachetele care asteapta ack
         */
-       pthread_mutex_lock(&cons[conn_id]->con_lock);
         if (res < 0) {
             for (int i = 0; i < int(to_be_acked[conn_id].size()); i++) {
                 data_hdr = (poli_tcp_data_hdr *)to_be_acked[conn_id][i];
@@ -209,7 +203,7 @@ void *sender_handler(void *arg)
                 }
                 DEBUG_PRINT("SENT AGAIN: frame %d\n", data_hdr->seq_num);
             }
-            pthread_mutex_unlock(&cons[conn_id]->con_lock);
+            // pthread_mutex_unlock(&cons[conn_id]->con_lock);
             continue;
         }
 
@@ -223,7 +217,7 @@ void *sender_handler(void *arg)
         DEBUG_PRINT("ctrl_hdr_type = %d\n; seq \n", ctrl_hdr.type);
         // DEBUG_PRINT("")
         if (ctrl_hdr.type != 4  && ctrl_hdr.type != 7){
-            pthread_mutex_unlock(&cons[conn_id]->con_lock);
+            // pthread_mutex_unlock(&cons[conn_id]->con_lock);
             continue;
         }
         DEBUG_PRINT("GOT ACK FOR %d\n", ctrl_hdr.ack_num);
@@ -233,6 +227,8 @@ void *sender_handler(void *arg)
             DEBUG_PRINT("%d ", get_header_from_segment(every)->seq_num);
         }
         DEBUG_PRINT("\n");
+
+        pthread_mutex_lock(&cons[conn_id]->con_lock);
 
         if (ack_received(conn_id, ctrl_hdr.ack_num, ctrl_hdr.type == 7)) {
             if (to_be_acked[conn_id].empty() || can_add_to_window(conn_id)) {
@@ -294,13 +290,13 @@ int setup_connection(uint32_t ip, uint16_t port)
     serveraddr.sin_port = port;
     serveraddr.sin_addr.s_addr = ip;
     
-    for (int i1 = 0; i1 < 1; i1++) {     
+    for (int i1 = 0; i1 < 3; i1++) {     
         do {
             rc = sendto(con->sockfd, &ctrl_hdr, sizeof(ctrl_hdr), 0, 
                 (sockaddr *)&serveraddr, serveraddr_len);
         } while (0);
 
-        for (int i = 0; i < 1; i++) {
+        for (int i = 0; i < 2; i++) {
             DEBUG_PRINT("trying to receive something\n");
             rc = recv(con->sockfd, &ctrl_hdr, sizeof(ctrl_hdr), 0);
                         // (sockaddr *)&serveraddr,
@@ -336,10 +332,10 @@ int setup_connection(uint32_t ip, uint16_t port)
     timer_fds[fdmax].fd = timerfd_create(CLOCK_REALTIME,  0);    
     timer_fds[fdmax].events = POLLIN;    
     struct itimerspec spec;     
-    spec.it_value.tv_sec = 1;    
-    spec.it_value.tv_nsec = 0;    
+    spec.it_value.tv_sec = 0;    
+    spec.it_value.tv_nsec = 500000;    
     spec.it_interval.tv_sec = 1;    
-    spec.it_interval.tv_nsec = 0;    
+    spec.it_interval.tv_nsec = 00000;    
     timerfd_settime(timer_fds[fdmax].fd, 0, &spec, NULL);    
     fdmax++;
 

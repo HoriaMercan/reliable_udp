@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
 
             /* Wait a bit before trying to send again */
             if (n - bytes_sent != 0)
-                usleep(500000);
+                usleep(10000);
         }
     }
 
